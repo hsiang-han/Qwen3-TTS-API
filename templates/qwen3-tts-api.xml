@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Qwen3-TTS-API</Name>
+  <Repository>ghcr.io/hsiang-han/qwen3-tts-api:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/hsiang-han/Qwen3-TTS-API/issues</Support>
+  <Project>https://github.com/hsiang-han/Qwen3-TTS-API</Project>
+  <Overview>OpenAI-compatible Text-to-Speech API powered by Qwen3-TTS (Alibaba Qwen Team). 10 languages, voice cloning from 3-second audio, voice design, instruction-based emotion control, and 9 built-in voices. Supports RTX 50-series (Blackwell) GPUs. First start downloads model files (~3-7GB depending on model size) from HuggingFace. Requires NVIDIA GPU with driver 550+.</Overview>
+  <Category>AI: Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/docs</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/hsiang-han/unraid_templates/main/templates/qwen3-tts-api.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/hsiang-han/unraid_templates/main/assets/qwen3-tts-api-icon.png</Icon>
+  <ExtraParams>--gpus all --shm-size=4g</ExtraParams>
+
+  <Config Name="API Port" Target="8080" Default="8080" Mode="tcp" Description="OpenAI-compatible TTS API port. Swagger docs at /docs" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+
+  <Config Name="Model Cache" Target="/root/.cache/huggingface" Default="/mnt/user/appdata/qwen3-tts-api/models" Mode="rw" Description="Model download cache. First run downloads ~3-7GB. Persists across container recreates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/qwen3-tts-api/models</Config>
+
+  <Config Name="Model ID" Target="MODEL_ID" Default="Qwen/Qwen3-TTS-12Hz-1.7B-Base" Mode="" Description="Model to load. Base models support voice clone. CustomVoice models have 9 built-in voices. See README for all options." Type="Variable" Display="always" Required="true" Mask="false">Qwen/Qwen3-TTS-12Hz-1.7B-Base</Config>
+
+  <Config Name="Dtype" Target="DTYPE" Default="bfloat16" Mode="" Description="Model precision. bfloat16 recommended. Use float16 for older GPUs without bf16 support." Type="Variable" Display="always" Required="false" Mask="false">bfloat16</Config>
+
+  <Config Name="HuggingFace Endpoint" Target="HF_ENDPOINT" Default="https://huggingface.co" Mode="" Description="HuggingFace download mirror. China users: change to https://hf-mirror.com" Type="Variable" Display="always" Required="false" Mask="false">https://huggingface.co</Config>
+
+  <Config Name="Attention Implementation" Target="ATTN_IMPLEMENTATION" Default="flash_attention_2" Mode="" Description="Attention backend. flash_attention_2 (fastest, needs flash-attn), sdpa (PyTorch native), eager (safest fallback)." Type="Variable" Display="advanced" Required="false" Mask="false">flash_attention_2</Config>
+
+  <Config Name="Port" Target="PORT" Default="8080" Mode="" Description="Internal API server port" Type="Variable" Display="advanced" Required="false" Mask="false">8080</Config>
+
+  <Config Name="NVIDIA Visible Devices" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="GPU selection (all, 0, 1, etc.)" Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
+
+  <Config Name="NVIDIA Driver Capabilities" Target="NVIDIA_DRIVER_CAPABILITIES" Default="compute,utility" Mode="" Description="NVIDIA driver capabilities" Type="Variable" Display="advanced" Required="false" Mask="false">compute,utility</Config>
+</Container>
