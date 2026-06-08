@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 DTYPE = os.getenv("DTYPE", "bfloat16")
@@ -86,36 +87,38 @@ async def list_voices():
     return {"voices": speakers, "languages": languages}
 
 
+class SpeechRequest(BaseModel):
+    model: Optional[str] = None
+    input: str
+    voice: str = "Vivian"
+    language: str = "Auto"
+    response_format: str = "wav"
+    speed: float = 1.0
+    instruct: Optional[str] = None
+
+
 @app.post("/v1/audio/speech")
-async def text_to_speech(
-    model: str = Form(default=None),
-    input: str = Form(...),
-    voice: str = Form(default="Vivian"),
-    language: str = Form(default="Auto"),
-    response_format: str = Form(default="wav"),
-    speed: float = Form(default=1.0),
-    instruct: str = Form(default=None),
-):
+async def text_to_speech(req: SpeechRequest):
     if not _model:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    if not input.strip():
+    if not req.input.strip():
         raise HTTPException(status_code=400, detail="Input text is empty")
 
     model_type = _detect_model_type()
 
     if model_type == "custom_voice":
         wavs, sr = _model.generate_custom_voice(
-            text=input,
-            language=language if language != "Auto" else None,
-            speaker=voice,
-            instruct=instruct if instruct else None,
+            text=req.input,
+            language=req.language if req.language != "Auto" else None,
+            speaker=req.voice,
+            instruct=req.instruct if req.instruct else None,
         )
     elif model_type == "voice_design":
         wavs, sr = _model.generate_voice_design(
-            text=input,
-            language=language if language != "Auto" else None,
-            instruct=instruct if instruct else "",
+            text=req.input,
+            language=req.language if req.language != "Auto" else None,
+            instruct=req.instruct if req.instruct else "",
         )
     elif model_type == "base":
         raise HTTPException(
