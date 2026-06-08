@@ -12,8 +12,7 @@ RUN pip install --no-cache-dir \
     fastapi \
     uvicorn[standard] \
     python-multipart \
-    soundfile \
-    numpy
+    soundfile
 
 RUN MAX_JOBS=4 pip install --no-cache-dir flash-attn --no-build-isolation || \
     echo "WARNING: flash-attn build failed, falling back to sdpa attention"
