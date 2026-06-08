@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/hsiang-han/Qwen3-TTS-API/issues</Support>
   <Project>https://github.com/hsiang-han/Qwen3-TTS-API</Project>
-  <Overview>OpenAI-compatible Text-to-Speech API powered by Qwen3-TTS (Alibaba Qwen Team). 10 languages, voice cloning from 3-second audio, voice design, instruction-based emotion control, and 9 built-in voices. Supports RTX 50-series (Blackwell) GPUs. First start downloads model files (~3-7GB depending on model size) from HuggingFace. Requires NVIDIA GPU with driver 550+.</Overview>
+  <Overview>OpenAI-compatible Text-to-Speech API powered by Qwen3-TTS (Alibaba Qwen Team). 10 languages, voice cloning from 3-second audio, voice design, instruction-based emotion control, and 9 built-in voices. Supports RTX 50-series (Blackwell) GPUs. First start downloads model files (~3-7GB depending on model size) from HuggingFace. China users: set HF_ENDPOINT to https://hf-mirror.com for faster downloads. Requires NVIDIA GPU with driver 550+.</Overview>
   <Category>AI: Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/docs</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/hsiang-han/unraid_templates/main/templates/qwen3-tts-api.xml</TemplateURL>
