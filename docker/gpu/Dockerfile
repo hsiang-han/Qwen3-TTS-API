@@ -22,7 +22,7 @@ COPY api/ ./api/
 COPY docker/scripts/entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
-ENV MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-Base \
+ENV MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
     DTYPE=bfloat16 \
     DEVICE=cuda:0 \
     ATTN_IMPLEMENTATION=flash_attention_2 \
