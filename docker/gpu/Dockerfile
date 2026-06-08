@@ -14,8 +14,12 @@ RUN pip install --no-cache-dir \
     python-multipart \
     soundfile
 
-RUN MAX_JOBS=4 pip install --no-cache-dir flash-attn --no-build-isolation || \
-    echo "WARNING: flash-attn build failed, falling back to sdpa attention"
+# flash-attn: only install pre-built wheel (skip source compilation on CI)
+# Users with GPU can rebuild locally: docker build --build-arg FLASH_ATTN=1
+ARG FLASH_ATTN=0
+RUN if [ "$FLASH_ATTN" = "1" ]; then \
+        MAX_JOBS=4 pip install --no-cache-dir flash-attn --no-build-isolation || true; \
+    fi
 
 COPY api/ ./api/
 COPY docker/scripts/entrypoint.sh .
@@ -24,7 +28,7 @@ RUN chmod +x entrypoint.sh
 ENV MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
     DTYPE=bfloat16 \
     DEVICE=cuda:0 \
-    ATTN_IMPLEMENTATION=flash_attention_2 \
+    ATTN_IMPLEMENTATION=sdpa \
     PORT=8080 \
     HF_HOME=/root/.cache/huggingface \
     HF_ENDPOINT=https://huggingface.co \
