@@ -17,7 +17,19 @@
 ## 快速开始
 
 ```bash
-docker compose -f docker/gpu/docker-compose.yml up
+docker run -d --gpus all \
+  -p 8080:8080 \
+  -v /mnt/user/appdata/qwen3-tts-api/models:/root/.cache/huggingface \
+  -e MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
+  --shm-size=4g \
+  --name qwen3-tts-api \
+  ghcr.io/hsiang-han/qwen3-tts-api:latest
+```
+
+或使用 docker compose：
+
+```bash
+docker compose -f docker/gpu/docker-compose.yml up -d
 ```
 
 首次启动会从 HuggingFace 下载模型（约 3-7GB）。
@@ -26,16 +38,51 @@ docker compose -f docker/gpu/docker-compose.yml up
 
 方案 1：使用 HuggingFace 镜像
 ```bash
-# 设置环境变量
-HF_ENDPOINT=https://hf-mirror.com
+# docker run 时加 -e HF_ENDPOINT=https://hf-mirror.com
 ```
 
 方案 2：使用 ModelScope 预下载，然后 MODEL_ID 传本地路径
 ```bash
 pip install modelscope
-modelscope download --model Qwen/Qwen3-TTS-12Hz-1.7B-Base --local_dir /mnt/user/appdata/qwen3-tts-api/models/Qwen3-TTS-12Hz-1.7B-Base
+modelscope download --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --local_dir /mnt/user/appdata/qwen3-tts-api/models/Qwen3-TTS-12Hz-1.7B-CustomVoice
 # 然后设置 MODEL_ID 为容器内的本地路径
 ```
+
+## 使用示例
+
+```bash
+# 使用内置音色合成语音
+curl -X POST http://localhost:8080/v1/audio/speech \
+  -F "input=你好，这是一个测试。" \
+  -F "voice=Vivian" \
+  -F "language=Chinese" \
+  --output output.wav
+
+# 带情感指令
+curl -X POST http://localhost:8080/v1/audio/speech \
+  -F "input=我真的太开心了！" \
+  -F "voice=Vivian" \
+  -F "language=Chinese" \
+  -F "instruct=用特别开心的语气说" \
+  --output happy.wav
+
+# 查看可用音色
+curl http://localhost:8080/v1/voices
+```
+
+## 内置音色（CustomVoice 模型）
+
+| 音色 | 描述 | 母语 |
+|------|------|------|
+| Vivian | 明亮、略带个性的年轻女声 | 中文 |
+| Serena | 温暖、温柔的年轻女声 | 中文 |
+| Uncle_Fu | 成熟男声，低沉醇厚 | 中文 |
+| Dylan | 年轻北京男声，清晰自然 | 中文（北京话） |
+| Eric | 活泼成都男声，略带沙哑 | 中文（四川话） |
+| Ryan | 有活力的男声，节奏感强 | 英文 |
+| Aiden | 阳光美式男声，中频清亮 | 英文 |
+| Ono_Anna | 活泼日本女声，轻快灵动 | 日文 |
+| Sohee | 温暖韩国女声，情感丰富 | 韩文 |
 
 ## API 接口
 
@@ -77,7 +124,7 @@ POST /v1/audio/speech/clone
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| MODEL_ID | Qwen/Qwen3-TTS-12Hz-1.7B-Base | HuggingFace 模型 ID 或本地路径 |
+| MODEL_ID | Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice | HuggingFace 模型 ID 或本地路径 |
 | DTYPE | bfloat16 | 模型精度（float16、bfloat16、float32） |
 | DEVICE | cuda:0 | 加载设备 |
 | ATTN_IMPLEMENTATION | flash_attention_2 | 注意力后端（flash_attention_2、sdpa、eager） |

@@ -17,10 +17,58 @@ State-of-the-art multilingual TTS with 10 languages, voice cloning, voice design
 ## Quick Start
 
 ```bash
-docker compose -f docker/gpu/docker-compose.yml up
+docker run -d --gpus all \
+  -p 8080:8080 \
+  -v /mnt/user/appdata/qwen3-tts-api/models:/root/.cache/huggingface \
+  -e MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
+  --shm-size=4g \
+  --name qwen3-tts-api \
+  ghcr.io/hsiang-han/qwen3-tts-api:latest
+```
+
+Or with docker compose:
+
+```bash
+docker compose -f docker/gpu/docker-compose.yml up -d
 ```
 
 First start downloads model files (~3-7GB) from HuggingFace. China users: set `HF_ENDPOINT=https://hf-mirror.com` for faster downloads.
+
+## Usage Examples
+
+```bash
+# Generate speech with built-in voice
+curl -X POST http://localhost:8080/v1/audio/speech \
+  -F "input=Hello, this is a test." \
+  -F "voice=Vivian" \
+  -F "language=English" \
+  --output output.wav
+
+# With emotion instruction
+curl -X POST http://localhost:8080/v1/audio/speech \
+  -F "input=我真的太开心了！" \
+  -F "voice=Vivian" \
+  -F "language=Chinese" \
+  -F "instruct=用特别开心的语气说" \
+  --output happy.wav
+
+# List available voices
+curl http://localhost:8080/v1/voices
+```
+
+## Built-in Voices (CustomVoice model)
+
+| Voice | Description | Native Language |
+|-------|-------------|-----------------|
+| Vivian | Bright, slightly edgy young female | Chinese |
+| Serena | Warm, gentle young female | Chinese |
+| Uncle_Fu | Seasoned male, low mellow timbre | Chinese |
+| Dylan | Youthful Beijing male, clear natural | Chinese (Beijing) |
+| Eric | Lively Chengdu male, slightly husky | Chinese (Sichuan) |
+| Ryan | Dynamic male, strong rhythmic drive | English |
+| Aiden | Sunny American male, clear midrange | English |
+| Ono_Anna | Playful Japanese female, light nimble | Japanese |
+| Sohee | Warm Korean female, rich emotion | Korean |
 
 ## API Endpoints
 
@@ -62,7 +110,7 @@ POST /v1/audio/speech/clone
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| MODEL_ID | Qwen/Qwen3-TTS-12Hz-1.7B-Base | HuggingFace model ID or local path |
+| MODEL_ID | Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice | HuggingFace model ID or local path |
 | DTYPE | bfloat16 | Model precision (float16, bfloat16, float32) |
 | DEVICE | cuda:0 | Device to load model on |
 | ATTN_IMPLEMENTATION | flash_attention_2 | Attention backend (flash_attention_2, sdpa, eager) |
