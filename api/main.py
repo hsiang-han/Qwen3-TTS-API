@@ -17,11 +17,12 @@ DEVICE = os.getenv("DEVICE", "cuda:0")
 ATTN_IMPL = os.getenv("ATTN_IMPLEMENTATION", "flash_attention_2")
 
 _model = None
+_attn_backend = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model
+    global _model, _attn_backend
     from qwen_tts import Qwen3TTSModel
 
     dtype_map = {
@@ -30,19 +31,19 @@ async def lifespan(app: FastAPI):
         "float32": torch.float32,
     }
 
-    attn_impl = ATTN_IMPL
-    if attn_impl == "flash_attention_2":
+    _attn_backend = ATTN_IMPL
+    if _attn_backend == "flash_attention_2":
         try:
             import flash_attn  # noqa: F401
         except ImportError:
             print("WARNING: flash-attn not available, falling back to sdpa")
-            attn_impl = "sdpa"
+            _attn_backend = "sdpa"
 
     _model = Qwen3TTSModel.from_pretrained(
         MODEL_ID,
         device_map=DEVICE,
         dtype=dtype_map.get(DTYPE, torch.bfloat16),
-        attn_implementation=attn_impl,
+        attn_implementation=_attn_backend,
     )
     yield
     _model = None
@@ -57,6 +58,7 @@ async def health():
         "status": "ok" if _model else "loading",
         "model": MODEL_ID,
         "dtype": DTYPE,
+        "attention": _attn_backend,
     }
 
 
