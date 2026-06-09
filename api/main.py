@@ -204,7 +204,8 @@ def _get_speakers() -> list:
     fn = getattr(_model.model, "get_supported_speakers", None)
     if callable(fn):
         result = fn()
-        return result if result else []
+        if result:
+            return [str(s) for s in result]
     return []
 
 
@@ -214,7 +215,8 @@ def _get_languages() -> list:
     fn = getattr(_model.model, "get_supported_languages", None)
     if callable(fn):
         result = fn()
-        return result if result else []
+        if result:
+            return [str(l) for l in result]
     return []
 
 
