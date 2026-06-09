@@ -23,6 +23,7 @@ ENV MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
     DTYPE=bfloat16 \
     DEVICE=cuda:0 \
     ATTN_IMPLEMENTATION=sdpa \
+    COMPILE_MODE=auto \
     PORT=8080 \
     HF_HOME=/root/.cache/huggingface \
     HF_ENDPOINT=https://huggingface.co \

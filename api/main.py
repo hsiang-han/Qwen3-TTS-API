@@ -14,17 +14,32 @@ from pydantic import BaseModel
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 DTYPE = os.getenv("DTYPE", "bfloat16")
 DEVICE = os.getenv("DEVICE", "cuda:0")
-ATTN_IMPL = os.getenv("ATTN_IMPLEMENTATION", "flash_attention_2")
+ATTN_IMPL = os.getenv("ATTN_IMPLEMENTATION", "sdpa")
+COMPILE_MODE = os.getenv("COMPILE_MODE", "auto")
 
 _model = None
 _attn_backend = None
+_compile_mode_used = None
 
 torch.set_float32_matmul_precision('high')
 
 
+def _select_compile_mode() -> str:
+    if COMPILE_MODE != "auto":
+        return COMPILE_MODE
+    # Auto-select based on GPU SM count
+    if torch.cuda.is_available():
+        sm_count = torch.cuda.get_device_properties(0).multi_processor_count
+        if sm_count >= 80:
+            return "max-autotune"
+        else:
+            return "reduce-overhead"
+    return "default"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model, _attn_backend
+    global _model, _attn_backend, _compile_mode_used
     from qwen_tts import Qwen3TTSModel
 
     dtype_map = {
@@ -34,6 +49,10 @@ async def lifespan(app: FastAPI):
     }
 
     _attn_backend = ATTN_IMPL
+    _compile_mode_used = _select_compile_mode()
+
+    sm_count = torch.cuda.get_device_properties(0).multi_processor_count if torch.cuda.is_available() else 0
+    print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A'}, SMs: {sm_count}, compile_mode: {_compile_mode_used}")
 
     _model = Qwen3TTSModel.from_pretrained(
         MODEL_ID,
@@ -42,17 +61,19 @@ async def lifespan(app: FastAPI):
         attn_implementation=_attn_backend,
     )
 
+    use_cuda_graphs = _compile_mode_used == "reduce-overhead"
+
     _model.enable_streaming_optimizations(
         decode_window_frames=300,
         use_compile=True,
-        use_cuda_graphs=False,
-        compile_mode="max-autotune",
+        use_cuda_graphs=use_cuda_graphs,
+        compile_mode=_compile_mode_used,
         use_fast_codebook=True,
         compile_codebook_predictor=True,
         compile_talker=True,
     )
 
-    print("Warming up torch.compile (first run will be slow)...")
+    print("Warming up torch.compile (this may take 30-60s on first run)...")
     _warmup()
     print("Warmup complete. Ready for requests.")
 
@@ -62,15 +83,17 @@ async def lifespan(app: FastAPI):
 
 def _warmup():
     model_type = _detect_model_type()
+    warmup_texts = [
+        "Warmup one.",
+        "This is a second warmup with more words to compile different shapes.",
+        "Third warmup run to ensure all code paths are compiled and cached.",
+    ]
     if model_type == "custom_voice":
-        try:
-            _model.generate_custom_voice(
-                text="Warmup test.",
-                language="English",
-                speaker="Vivian",
-            )
-        except Exception:
-            pass
+        for text in warmup_texts:
+            try:
+                _model.generate_custom_voice(text=text, language="English", speaker="Vivian")
+            except Exception:
+                pass
     elif model_type == "base":
         pass
 
@@ -85,6 +108,7 @@ async def health():
         "model": MODEL_ID,
         "dtype": DTYPE,
         "attention": _attn_backend,
+        "compile_mode": _compile_mode_used,
     }
 
 
