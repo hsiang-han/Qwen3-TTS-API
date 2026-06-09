@@ -26,6 +26,7 @@ ENV MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
     PORT=8080 \
     HF_HOME=/root/.cache/huggingface \
     HF_ENDPOINT=https://huggingface.co \
+    TORCHINDUCTOR_CACHE_DIR=/root/.cache/torch_inductor \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8080

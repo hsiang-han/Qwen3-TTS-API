@@ -20,6 +20,8 @@
 
   <Config Name="Model Cache" Target="/root/.cache/huggingface" Default="/mnt/user/appdata/qwen3-tts-api/models" Mode="rw" Description="Model download cache. First run downloads ~3-7GB. Persists across container recreates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/qwen3-tts-api/models</Config>
 
+  <Config Name="Torch Compile Cache" Target="/root/.cache/torch_inductor" Default="/mnt/user/appdata/qwen3-tts-api/torch_cache" Mode="rw" Description="Torch compile kernel cache. Persisting this avoids ~60s recompilation on restart." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/qwen3-tts-api/torch_cache</Config>
+
   <Config Name="Model ID" Target="MODEL_ID" Default="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice" Mode="" Description="Model to load. Base models support voice clone. CustomVoice models have 9 built-in voices. See README for all options." Type="Variable" Display="always" Required="true" Mask="false">Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice</Config>
 
   <Config Name="Dtype" Target="DTYPE" Default="bfloat16" Mode="" Description="Model precision. bfloat16 recommended. Use float16 for older GPUs without bf16 support." Type="Variable" Display="always" Required="false" Mask="false">bfloat16</Config>
