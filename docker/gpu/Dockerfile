@@ -8,7 +8,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    qwen-tts \
+    "qwen-tts @ git+https://github.com/dffdeeq/Qwen3-TTS-streaming.git" \
     fastapi \
     uvicorn[standard] \
     python-multipart \

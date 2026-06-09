@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 DTYPE = os.getenv("DTYPE", "bfloat16")
@@ -18,6 +18,8 @@ ATTN_IMPL = os.getenv("ATTN_IMPLEMENTATION", "flash_attention_2")
 
 _model = None
 _attn_backend = None
+
+torch.set_float32_matmul_precision('high')
 
 
 @asynccontextmanager
@@ -39,8 +41,38 @@ async def lifespan(app: FastAPI):
         dtype=dtype_map.get(DTYPE, torch.bfloat16),
         attn_implementation=_attn_backend,
     )
+
+    _model.enable_streaming_optimizations(
+        decode_window_frames=300,
+        use_compile=True,
+        use_cuda_graphs=False,
+        compile_mode="max-autotune",
+        use_fast_codebook=True,
+        compile_codebook_predictor=True,
+        compile_talker=True,
+    )
+
+    print("Warming up torch.compile (first run will be slow)...")
+    _warmup()
+    print("Warmup complete. Ready for requests.")
+
     yield
     _model = None
+
+
+def _warmup():
+    model_type = _detect_model_type()
+    if model_type == "custom_voice":
+        try:
+            _model.generate_custom_voice(
+                text="Warmup test.",
+                language="English",
+                speaker="Vivian",
+            )
+        except Exception:
+            pass
+    elif model_type == "base":
+        pass
 
 
 app = FastAPI(title="Qwen3-TTS-API", version="0.1.0", lifespan=lifespan)
