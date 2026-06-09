@@ -12,7 +12,8 @@
 - 3 秒参考音频即可克隆声音
 - 10 种语言：中文、英文、日语、韩语、德语、法语、俄语、葡萄牙语、西班牙语、意大利语
 - 多种模型规格：0.6B（约 3GB 显存）和 1.7B（约 6GB 显存）
-- 首包延迟仅 97ms
+- 优化推理：torch.compile + fast codebook（比原版快 3-6 倍）
+- 编译缓存持久化——首次启动后重启秒加载
 
 ## 快速开始
 
@@ -20,11 +21,14 @@
 docker run -d --gpus all \
   -p 8080:8080 \
   -v /mnt/user/appdata/qwen3-tts-api/models:/root/.cache/huggingface \
+  -v /mnt/user/appdata/qwen3-tts-api/torch_cache:/root/.cache/torch_inductor \
   -e MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --shm-size=4g \
   --name qwen3-tts-api \
   ghcr.io/hsiang-han/qwen3-tts-api:latest
 ```
+
+首次启动会编译优化 CUDA 内核（约 60 秒）并下载模型（约 3-7GB）。之后重启很快（缓存持久化到 `torch_cache` 卷）。
 
 或使用 docker compose：
 
@@ -127,10 +131,11 @@ POST /v1/audio/speech/clone
 | MODEL_ID | Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice | HuggingFace 模型 ID 或本地路径 |
 | DTYPE | bfloat16 | 模型精度（float16、bfloat16、float32） |
 | DEVICE | cuda:0 | 加载设备 |
-| ATTN_IMPLEMENTATION | flash_attention_2 | 注意力后端（flash_attention_2、sdpa、eager） |
+| ATTN_IMPLEMENTATION | sdpa | 注意力后端（sdpa、eager） |
 | PORT | 8080 | API 端口 |
 | HF_HOME | /root/.cache/huggingface | HuggingFace 缓存目录 |
 | HF_ENDPOINT | https://huggingface.co | HuggingFace 镜像地址（国内用 https://hf-mirror.com） |
+| TORCHINDUCTOR_CACHE_DIR | /root/.cache/torch_inductor | Torch 编译缓存（持久化可加快重启） |
 
 ## 可用模型
 
@@ -147,3 +152,8 @@ POST /v1/audio/speech/clone
 - NVIDIA 显卡，4GB+ 显存（0.6B）或 8GB+ 显存（1.7B）
 - 驱动版本 550+（Ampere/Ada）或 570+（Blackwell RTX 50 系列）
 - 安装 NVIDIA Container Toolkit 的 Docker 环境
+
+## 致谢
+
+- [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) — 阿里通义千问团队，模型和官方推理代码
+- [Qwen3-TTS-streaming](https://github.com/dffdeeq/Qwen3-TTS-streaming) — [@dffdeeq](https://github.com/dffdeeq)，torch.compile 优化和 fast codebook，提供 3-6 倍推理加速

@@ -12,7 +12,8 @@ State-of-the-art multilingual TTS with 10 languages, voice cloning, voice design
 - Voice cloning from 3-second reference audio
 - 10 languages: Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian
 - Multiple model sizes: 0.6B (~3GB VRAM) and 1.7B (~6GB VRAM)
-- Streaming-ready architecture (97ms first-packet latency)
+- Optimized inference: torch.compile + fast codebook (3-6x faster than stock qwen-tts)
+- Compile cache persisted to disk — fast restarts after first run
 
 ## Quick Start
 
@@ -20,11 +21,14 @@ State-of-the-art multilingual TTS with 10 languages, voice cloning, voice design
 docker run -d --gpus all \
   -p 8080:8080 \
   -v /mnt/user/appdata/qwen3-tts-api/models:/root/.cache/huggingface \
+  -v /mnt/user/appdata/qwen3-tts-api/torch_cache:/root/.cache/torch_inductor \
   -e MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --shm-size=4g \
   --name qwen3-tts-api \
   ghcr.io/hsiang-han/qwen3-tts-api:latest
 ```
+
+First start compiles optimized CUDA kernels (~60s) and downloads model (~3-7GB). Subsequent starts are fast (cache persisted to `torch_cache` volume).
 
 Or with docker compose:
 
@@ -113,10 +117,11 @@ POST /v1/audio/speech/clone
 | MODEL_ID | Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice | HuggingFace model ID or local path |
 | DTYPE | bfloat16 | Model precision (float16, bfloat16, float32) |
 | DEVICE | cuda:0 | Device to load model on |
-| ATTN_IMPLEMENTATION | flash_attention_2 | Attention backend (flash_attention_2, sdpa, eager) |
+| ATTN_IMPLEMENTATION | sdpa | Attention backend (sdpa, eager) |
 | PORT | 8080 | API server port |
 | HF_HOME | /root/.cache/huggingface | HuggingFace cache directory |
 | HF_ENDPOINT | https://huggingface.co | HuggingFace mirror (China: https://hf-mirror.com) |
+| TORCHINDUCTOR_CACHE_DIR | /root/.cache/torch_inductor | Torch compile cache (persist for fast restarts) |
 
 ## Available Models
 
@@ -133,3 +138,8 @@ POST /v1/audio/speech/clone
 - NVIDIA GPU with 4GB+ VRAM (0.6B) or 8GB+ VRAM (1.7B)
 - NVIDIA driver 550+ (Ampere/Ada) or 570+ (Blackwell RTX 50-series)
 - Docker with NVIDIA Container Toolkit
+
+## Credits
+
+- [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) by Alibaba Qwen Team — the model and official inference code
+- [Qwen3-TTS-streaming](https://github.com/dffdeeq/Qwen3-TTS-streaming) by [@dffdeeq](https://github.com/dffdeeq) — torch.compile optimizations and fast codebook that provide 3-6x inference speedup
