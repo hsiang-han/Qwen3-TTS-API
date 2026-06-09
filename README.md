@@ -118,6 +118,7 @@ POST /v1/audio/speech/clone
 | DTYPE | bfloat16 | Model precision (float16, bfloat16, float32) |
 | DEVICE | cuda:0 | Device to load model on |
 | ATTN_IMPLEMENTATION | sdpa | Attention backend (sdpa, eager) |
+| COMPILE_MODE | auto | Torch compile mode (auto, max-autotune, reduce-overhead, default). Auto selects based on GPU SM count |
 | PORT | 8080 | API server port |
 | HF_HOME | /root/.cache/huggingface | HuggingFace cache directory |
 | HF_ENDPOINT | https://huggingface.co | HuggingFace mirror (China: https://hf-mirror.com) |

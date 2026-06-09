@@ -132,6 +132,7 @@ POST /v1/audio/speech/clone
 | DTYPE | bfloat16 | 模型精度（float16、bfloat16、float32） |
 | DEVICE | cuda:0 | 加载设备 |
 | ATTN_IMPLEMENTATION | sdpa | 注意力后端（sdpa、eager） |
+| COMPILE_MODE | auto | Torch 编译模式（auto、max-autotune、reduce-overhead、default）。auto 根据 GPU SM 数量自动选择 |
 | PORT | 8080 | API 端口 |
 | HF_HOME | /root/.cache/huggingface | HuggingFace 缓存目录 |
 | HF_ENDPOINT | https://huggingface.co | HuggingFace 镜像地址（国内用 https://hf-mirror.com） |

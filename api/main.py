@@ -30,7 +30,7 @@ def _select_compile_mode() -> str:
     # Auto-select based on GPU SM count
     if torch.cuda.is_available():
         sm_count = torch.cuda.get_device_properties(0).multi_processor_count
-        if sm_count >= 80:
+        if sm_count >= 68:
             return "max-autotune"
         else:
             return "reduce-overhead"
