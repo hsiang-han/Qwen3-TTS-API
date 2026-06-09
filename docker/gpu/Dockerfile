@@ -15,8 +15,9 @@ RUN pip install --no-cache-dir \
     soundfile
 
 # Install flash-attn from pre-built wheel (no source compilation needed)
-RUN pip install --no-cache-dir https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl || \
-    echo "WARNING: flash-attn install failed, will use sdpa fallback"
+# Falls back gracefully if wheel is incompatible with current torch version
+RUN pip install --no-cache-dir "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3%2Bcu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" \
+    || echo "flash-attn install failed, will use sdpa fallback at runtime"
 
 COPY api/ ./api/
 COPY docker/scripts/entrypoint.sh .
