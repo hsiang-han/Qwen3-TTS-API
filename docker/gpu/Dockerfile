@@ -8,12 +8,11 @@ RUN apt-get update && \
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    "qwen-tts @ git+https://github.com/dffdeeq/Qwen3-TTS-streaming.git" \
+    faster-qwen3-tts \
     fastapi \
     uvicorn[standard] \
     python-multipart \
     soundfile
-
 
 COPY api/ ./api/
 COPY docker/scripts/entrypoint.sh .
@@ -23,11 +22,9 @@ ENV MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
     DTYPE=bfloat16 \
     DEVICE=cuda:0 \
     ATTN_IMPLEMENTATION=sdpa \
-    COMPILE_MODE=auto \
     PORT=8080 \
     HF_HOME=/root/.cache/huggingface \
     HF_ENDPOINT=https://huggingface.co \
-    TORCHINDUCTOR_CACHE_DIR=/root/.cache/torch_inductor \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8080

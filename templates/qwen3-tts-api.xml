@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/hsiang-han/Qwen3-TTS-API/issues</Support>
   <Project>https://github.com/hsiang-han/Qwen3-TTS-API</Project>
-  <Overview>OpenAI-compatible Text-to-Speech API powered by Qwen3-TTS (Alibaba Qwen Team). 10 languages, voice cloning from 3-second audio, voice design, instruction-based emotion control, and 9 built-in voices. Supports RTX 50-series (Blackwell) GPUs. First start downloads model files (~3-7GB depending on model size) from HuggingFace. China users: set HF_ENDPOINT to https://hf-mirror.com for faster downloads. Requires NVIDIA GPU with driver 550+.</Overview>
+  <Overview>OpenAI-compatible TTS API powered by Qwen3-TTS with CUDA graph acceleration (7-10x faster). 10 languages, 9 built-in voices, voice cloning, emotion control, streaming output. Supports RTX 50-series (Blackwell) GPUs. First start downloads model (~3-7GB) from HuggingFace. China users: set HF_ENDPOINT to https://hf-mirror.com for faster downloads. Requires NVIDIA GPU with driver 550+.</Overview>
   <Category>AI: Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/docs</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/hsiang-han/unraid_templates/main/templates/qwen3-tts-api.xml</TemplateURL>
@@ -20,17 +20,11 @@
 
   <Config Name="Model Cache" Target="/root/.cache/huggingface" Default="/mnt/user/appdata/qwen3-tts-api/models" Mode="rw" Description="Model download cache. First run downloads ~3-7GB. Persists across container recreates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/qwen3-tts-api/models</Config>
 
-  <Config Name="Torch Compile Cache" Target="/root/.cache/torch_inductor" Default="/mnt/user/appdata/qwen3-tts-api/torch_cache" Mode="rw" Description="Torch compile kernel cache. Persisting this avoids ~60s recompilation on restart." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/qwen3-tts-api/torch_cache</Config>
-
   <Config Name="Model ID" Target="MODEL_ID" Default="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice" Mode="" Description="Model to load. Base models support voice clone. CustomVoice models have 9 built-in voices. See README for all options." Type="Variable" Display="always" Required="true" Mask="false">Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice</Config>
 
   <Config Name="Dtype" Target="DTYPE" Default="bfloat16" Mode="" Description="Model precision. bfloat16 recommended. Use float16 for older GPUs without bf16 support." Type="Variable" Display="always" Required="false" Mask="false">bfloat16</Config>
 
   <Config Name="HuggingFace Endpoint" Target="HF_ENDPOINT" Default="https://huggingface.co" Mode="" Description="HuggingFace download mirror. China users: change to https://hf-mirror.com" Type="Variable" Display="always" Required="false" Mask="false">https://huggingface.co</Config>
-
-  <Config Name="Compile Mode" Target="COMPILE_MODE" Default="auto" Mode="" Description="Torch compile mode. auto (recommended): selects based on GPU. max-autotune for large GPUs (>=68 SMs), reduce-overhead for smaller GPUs." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
-
-  <Config Name="Attention Implementation" Target="ATTN_IMPLEMENTATION" Default="sdpa" Mode="" Description="Attention backend. sdpa (PyTorch native), eager (safest fallback)." Type="Variable" Display="advanced" Required="false" Mask="false">sdpa</Config>
 
   <Config Name="NVIDIA Visible Devices" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="GPU selection (all, 0, 1, etc.)" Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
 

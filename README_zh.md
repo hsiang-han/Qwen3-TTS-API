@@ -2,18 +2,20 @@
 
 [English](README.md)
 
-基于 [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)（阿里通义千问团队）的 OpenAI 兼容语音合成 API。
+基于 [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) 的 OpenAI 兼容语音合成 API，使用 [faster-qwen3-tts](https://github.com/andimarafioti/faster-qwen3-tts) CUDA 图加速。
 
-支持 10 种语言、3 秒声音克隆、语音设计、指令控制情感语气。支持 RTX 50 系列（Blackwell）显卡。
+比原版推理快 7-10 倍。RTX 4060/5060 Ti 级别显卡即可实时生成。无需 flash-attn、vLLM 或 Triton——纯 CUDA 图加速。
 
 ## 功能特性
 
-- OpenAI 兼容的 `/v1/audio/speech` 接口
+- OpenAI 兼容的 `/v1/audio/speech` 接口（JSON body）
+- **CUDA 图加速** — 比原版快 7-10 倍
+- 流式输出（`"stream": true` 返回分块 WAV）
 - 3 秒参考音频即可克隆声音
 - 10 种语言：中文、英文、日语、韩语、德语、法语、俄语、葡萄牙语、西班牙语、意大利语
-- 多种模型规格：0.6B（约 3GB 显存）和 1.7B（约 6GB 显存）
-- 优化推理：torch.compile + fast codebook（比原版快 3-6 倍）
-- 编译缓存持久化——首次启动后重启秒加载
+- 9 种内置音色（CustomVoice 模型）+ 指令情感控制
+- 不需要 flash-attn
+- 支持 RTX 50 系列（Blackwell）显卡
 
 ## 快速开始
 
@@ -21,14 +23,11 @@
 docker run -d --gpus all \
   -p 8080:8080 \
   -v /mnt/user/appdata/qwen3-tts-api/models:/root/.cache/huggingface \
-  -v /mnt/user/appdata/qwen3-tts-api/torch_cache:/root/.cache/torch_inductor \
   -e MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --shm-size=4g \
   --name qwen3-tts-api \
   ghcr.io/hsiang-han/qwen3-tts-api:latest
 ```
-
-首次启动会编译优化 CUDA 内核（约 60 秒）并下载模型（约 3-7GB）。之后重启很快（缓存持久化到 `torch_cache` 卷）。
 
 或使用 docker compose：
 
@@ -36,39 +35,28 @@ docker run -d --gpus all \
 docker compose -f docker/gpu/docker-compose.yml up -d
 ```
 
-首次启动会从 HuggingFace 下载模型（约 3-7GB）。
-
-**国内用户加速方案：**
-
-方案 1：使用 HuggingFace 镜像
-```bash
-# docker run 时加 -e HF_ENDPOINT=https://hf-mirror.com
-```
-
-方案 2：使用 ModelScope 预下载，然后 MODEL_ID 传本地路径
-```bash
-pip install modelscope
-modelscope download --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --local_dir /mnt/user/appdata/qwen3-tts-api/models/Qwen3-TTS-12Hz-1.7B-CustomVoice
-# 然后设置 MODEL_ID 为容器内的本地路径
-```
+首次启动下载模型（约 3-7GB），第一次请求时捕获 CUDA 图。国内用户设置 `HF_ENDPOINT=https://hf-mirror.com` 加速下载。
 
 ## 使用示例
 
 ```bash
 # 使用内置音色合成语音
 curl -X POST http://localhost:8080/v1/audio/speech \
-  -F "input=你好，这是一个测试。" \
-  -F "voice=Vivian" \
-  -F "language=Chinese" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "你好，这是一个测试。", "voice": "Vivian", "language": "Chinese"}' \
   --output output.wav
 
-# 带情感指令
+# 带情感指令（仅 1.7B CustomVoice）
 curl -X POST http://localhost:8080/v1/audio/speech \
-  -F "input=我真的太开心了！" \
-  -F "voice=Vivian" \
-  -F "language=Chinese" \
-  -F "instruct=用特别开心的语气说" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "我真的太开心了！", "voice": "Vivian", "instruct": "用特别开心的语气说"}' \
   --output happy.wav
+
+# 流式输出
+curl -X POST http://localhost:8080/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{"input": "流式测试。", "voice": "Vivian", "stream": true}' \
+  --output stream.wav
 
 # 查看可用音色
 curl http://localhost:8080/v1/voices
@@ -90,39 +78,14 @@ curl http://localhost:8080/v1/voices
 
 ## API 接口
 
-### 健康检查
-```
-GET /health
-```
-
-### 列出模型和音色
-```
-GET /v1/models
-GET /v1/voices
-```
-
-### 语音合成（CustomVoice / VoiceDesign）
-```
-POST /v1/audio/speech
-```
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| input | string | 必填 | 要合成的文本 |
-| voice | string | Vivian | 音色名称 |
-| language | string | Auto | 语言（Auto、Chinese、English、Japanese 等） |
-| instruct | string | null | 语气/情感控制指令 |
-
-### 声音克隆（仅 Base 模型）
-```
-POST /v1/audio/speech/clone
-```
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| input | string | 必填 | 要合成的文本 |
-| ref_audio | file | 必填 | 参考音频文件（WAV） |
-| ref_text | string | null | 参考音频的文字内容（提升克隆质量） |
-| language | string | Auto | 目标语言 |
-| x_vector_only | bool | false | 仅使用说话人特征向量（不使用 ICL） |
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/v1/audio/speech` | POST | 语音合成（JSON body，OpenAI 兼容） |
+| `/v1/audio/speech/clone` | POST | 声音克隆（Form + 文件上传，仅 Base 模型） |
+| `/v1/voices` | GET | 列出可用音色和语言 |
+| `/v1/models` | GET | 列出模型 |
+| `/health` | GET | 健康检查 |
+| `/docs` | GET | Swagger 文档 |
 
 ## 环境变量
 
@@ -130,13 +93,11 @@ POST /v1/audio/speech/clone
 |------|--------|------|
 | MODEL_ID | Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice | HuggingFace 模型 ID 或本地路径 |
 | DTYPE | bfloat16 | 模型精度（float16、bfloat16、float32） |
-| DEVICE | cuda:0 | 加载设备 |
+| DEVICE | cuda:0 | CUDA 设备 |
 | ATTN_IMPLEMENTATION | sdpa | 注意力后端（sdpa、eager） |
-| COMPILE_MODE | auto | Torch 编译模式（auto、max-autotune、reduce-overhead、default）。auto 根据 GPU SM 数量自动选择 |
 | PORT | 8080 | API 端口 |
 | HF_HOME | /root/.cache/huggingface | HuggingFace 缓存目录 |
 | HF_ENDPOINT | https://huggingface.co | HuggingFace 镜像地址（国内用 https://hf-mirror.com） |
-| TORCHINDUCTOR_CACHE_DIR | /root/.cache/torch_inductor | Torch 编译缓存（持久化可加快重启） |
 
 ## 可用模型
 
@@ -156,5 +117,5 @@ POST /v1/audio/speech/clone
 
 ## 致谢
 
-- [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) — 阿里通义千问团队，模型和官方推理代码
-- [Qwen3-TTS-streaming](https://github.com/dffdeeq/Qwen3-TTS-streaming) — [@dffdeeq](https://github.com/dffdeeq)，torch.compile 优化和 fast codebook，提供 3-6 倍推理加速
+- [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) — 阿里通义千问团队，模型
+- [faster-qwen3-tts](https://github.com/andimarafioti/faster-qwen3-tts) — [@andimarafioti](https://github.com/andimarafioti)，CUDA 图加速（7-10 倍提速）

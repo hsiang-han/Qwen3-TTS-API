@@ -1,46 +1,30 @@
 import io
 import os
-import tempfile
-import wave
+import struct
+import threading
 from contextlib import asynccontextmanager
 from typing import Optional
 
 import numpy as np
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
-MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
+MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice")
 DTYPE = os.getenv("DTYPE", "bfloat16")
 DEVICE = os.getenv("DEVICE", "cuda:0")
 ATTN_IMPL = os.getenv("ATTN_IMPLEMENTATION", "sdpa")
-COMPILE_MODE = os.getenv("COMPILE_MODE", "auto")
 
+SAMPLE_RATE = 24000
 _model = None
-_attn_backend = None
-_compile_mode_used = None
-
-torch.set_float32_matmul_precision('high')
-
-
-def _select_compile_mode() -> str:
-    if COMPILE_MODE != "auto":
-        return COMPILE_MODE
-    # Auto-select based on GPU SM count
-    if torch.cuda.is_available():
-        sm_count = torch.cuda.get_device_properties(0).multi_processor_count
-        if sm_count >= 68:
-            return "max-autotune"
-        else:
-            return "reduce-overhead"
-    return "default"
+_model_lock = threading.Lock()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model, _attn_backend, _compile_mode_used
-    from qwen_tts import Qwen3TTSModel
+    global _model, SAMPLE_RATE
+    from faster_qwen3_tts import FasterQwen3TTS
 
     dtype_map = {
         "float16": torch.float16,
@@ -48,57 +32,19 @@ async def lifespan(app: FastAPI):
         "float32": torch.float32,
     }
 
-    _attn_backend = ATTN_IMPL
-    _compile_mode_used = _select_compile_mode()
-
-    sm_count = torch.cuda.get_device_properties(0).multi_processor_count if torch.cuda.is_available() else 0
-    print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A'}, SMs: {sm_count}, compile_mode: {_compile_mode_used}")
-
-    _model = Qwen3TTSModel.from_pretrained(
+    _model = FasterQwen3TTS.from_pretrained(
         MODEL_ID,
-        device_map=DEVICE,
+        device=DEVICE,
         dtype=dtype_map.get(DTYPE, torch.bfloat16),
-        attn_implementation=_attn_backend,
+        attn_implementation=ATTN_IMPL,
     )
-
-    use_cuda_graphs = _compile_mode_used == "reduce-overhead"
-
-    _model.enable_streaming_optimizations(
-        decode_window_frames=300,
-        use_compile=True,
-        use_cuda_graphs=use_cuda_graphs,
-        compile_mode=_compile_mode_used,
-        use_fast_codebook=True,
-        compile_codebook_predictor=True,
-        compile_talker=True,
-    )
-
-    print("Warming up torch.compile (this may take 30-60s on first run)...")
-    _warmup()
-    print("Warmup complete. Ready for requests.")
+    SAMPLE_RATE = _model.sample_rate
 
     yield
     _model = None
 
 
-def _warmup():
-    model_type = _detect_model_type()
-    warmup_texts = [
-        "Warmup one.",
-        "This is a second warmup with more words to compile different shapes.",
-        "Third warmup run to ensure all code paths are compiled and cached.",
-    ]
-    if model_type == "custom_voice":
-        for text in warmup_texts:
-            try:
-                _model.generate_custom_voice(text=text, language="English", speaker="Vivian")
-            except Exception:
-                pass
-    elif model_type == "base":
-        pass
-
-
-app = FastAPI(title="Qwen3-TTS-API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Qwen3-TTS-API", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -107,8 +53,8 @@ async def health():
         "status": "ok" if _model else "loading",
         "model": MODEL_ID,
         "dtype": DTYPE,
-        "attention": _attn_backend,
-        "compile_mode": _compile_mode_used,
+        "attention": ATTN_IMPL,
+        "sample_rate": SAMPLE_RATE,
     }
 
 
@@ -146,6 +92,7 @@ class SpeechRequest(BaseModel):
     language: str = "Auto"
     response_format: str = "wav"
     speed: float = 1.0
+    stream: bool = False
     instruct: Optional[str] = None
 
 
@@ -160,18 +107,14 @@ async def text_to_speech(req: SpeechRequest):
     model_type = _detect_model_type()
 
     if model_type == "custom_voice":
-        wavs, sr = _model.generate_custom_voice(
-            text=req.input,
-            language=req.language if req.language != "Auto" else None,
-            speaker=req.voice,
-            instruct=req.instruct if req.instruct else None,
-        )
+        if req.stream:
+            return StreamingResponse(
+                _stream_custom_voice(req.input, req.voice, req.language, req.instruct),
+                media_type="audio/wav",
+            )
+        audio, sr = _generate_custom_voice(req.input, req.voice, req.language, req.instruct)
     elif model_type == "voice_design":
-        wavs, sr = _model.generate_voice_design(
-            text=req.input,
-            language=req.language if req.language != "Auto" else None,
-            instruct=req.instruct if req.instruct else "",
-        )
+        audio, sr = _generate_voice_design(req.input, req.language, req.instruct or "")
     elif model_type == "base":
         raise HTTPException(
             status_code=400,
@@ -180,8 +123,9 @@ async def text_to_speech(req: SpeechRequest):
     else:
         raise HTTPException(status_code=400, detail=f"Unknown model type: {model_type}")
 
-    wav_bytes = _to_wav(wavs[0], sr)
-    return Response(content=wav_bytes, media_type="audio/wav")
+    if req.response_format == "pcm":
+        return Response(content=_to_pcm16(audio), media_type="audio/pcm")
+    return Response(content=_to_wav(audio, sr), media_type="audio/wav")
 
 
 @app.post("/v1/audio/speech/clone")
@@ -191,6 +135,7 @@ async def clone_speech(
     ref_text: str = Form(default=None),
     language: str = Form(default="Auto"),
     x_vector_only: bool = Form(default=False),
+    stream: bool = Form(default=False),
 ):
     if not _model:
         raise HTTPException(status_code=503, detail="Model not loaded")
@@ -208,34 +153,109 @@ async def clone_speech(
     if not x_vector_only and not ref_text:
         raise HTTPException(
             status_code=400,
-            detail="ref_text is required when x_vector_only is false (ICL mode). Provide the transcript of the reference audio, or set x_vector_only=true.",
+            detail="ref_text is required when x_vector_only is false (ICL mode).",
         )
 
+    import tempfile
     audio_bytes = await ref_audio.read()
-
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         tmp.write(audio_bytes)
         tmp_path = tmp.name
 
     try:
-        wavs, sr = _model.generate_voice_clone(
-            text=input,
-            language=language if language != "Auto" else None,
-            ref_audio=tmp_path,
-            ref_text=ref_text,
-            x_vector_only_mode=x_vector_only,
-        )
+        if stream:
+            return StreamingResponse(
+                _stream_voice_clone(input, language, tmp_path, ref_text, x_vector_only),
+                media_type="audio/wav",
+            )
+        audio, sr = _generate_voice_clone(input, language, tmp_path, ref_text, x_vector_only)
     finally:
-        os.unlink(tmp_path)
+        if not stream:
+            os.unlink(tmp_path)
 
-    wav_bytes = _to_wav(wavs[0], sr)
-    return Response(content=wav_bytes, media_type="audio/wav")
+    return Response(content=_to_wav(audio, sr), media_type="audio/wav")
 
+
+# --- Generation functions ---
+
+def _generate_custom_voice(text: str, speaker: str, language: str, instruct: Optional[str]):
+    lang = language if language != "Auto" else "Auto"
+    with _model_lock:
+        wavs, sr = _model.generate_custom_voice(
+            text=text,
+            speaker=speaker,
+            language=lang,
+            instruct=instruct if instruct else None,
+        )
+    return wavs[0], sr
+
+
+def _stream_custom_voice(text: str, speaker: str, language: str, instruct: Optional[str]):
+    lang = language if language != "Auto" else "Auto"
+    header_sent = False
+    with _model_lock:
+        for chunk, sr, timing in _model.generate_custom_voice_streaming(
+            text=text,
+            speaker=speaker,
+            language=lang,
+            instruct=instruct if instruct else None,
+            chunk_size=8,
+        ):
+            if not header_sent:
+                yield _wav_header(sr)
+                header_sent = True
+            yield _to_pcm16(chunk)
+
+
+def _generate_voice_design(text: str, language: str, instruct: str):
+    lang = language if language != "Auto" else "Auto"
+    with _model_lock:
+        wavs, sr = _model.generate_voice_design(
+            text=text,
+            language=lang,
+            instruct=instruct,
+        )
+    return wavs[0], sr
+
+
+def _generate_voice_clone(text: str, language: str, ref_audio: str, ref_text: Optional[str], xvec_only: bool):
+    lang = language if language != "Auto" else "Auto"
+    with _model_lock:
+        wavs, sr = _model.generate_voice_clone(
+            text=text,
+            language=lang,
+            ref_audio=ref_audio,
+            ref_text=ref_text,
+            xvec_only=xvec_only,
+        )
+    return wavs[0], sr
+
+
+def _stream_voice_clone(text: str, language: str, ref_audio: str, ref_text: Optional[str], xvec_only: bool):
+    lang = language if language != "Auto" else "Auto"
+    header_sent = False
+    with _model_lock:
+        for chunk, sr, timing in _model.generate_voice_clone_streaming(
+            text=text,
+            language=lang,
+            ref_audio=ref_audio,
+            ref_text=ref_text or "",
+            xvec_only=xvec_only,
+            chunk_size=8,
+        ):
+            if not header_sent:
+                yield _wav_header(sr)
+                header_sent = True
+            yield _to_pcm16(chunk)
+
+
+# --- Helpers ---
 
 def _detect_model_type() -> str:
     if not _model:
         return "unknown"
-    tts_type = getattr(_model.model, "tts_model_type", None)
+    base = _model.model
+    tts_type = getattr(base.model, "tts_model_type", None)
     if tts_type:
         return tts_type
     model_id_lower = MODEL_ID.lower()
@@ -251,32 +271,46 @@ def _detect_model_type() -> str:
 def _get_speakers() -> list:
     if not _model:
         return []
-    fn = getattr(_model.model, "get_supported_speakers", None)
+    base = _model.model
+    fn = getattr(base.model, "get_supported_speakers", None)
     if callable(fn):
         result = fn()
-        if result:
-            return [str(s) for s in result]
+        return [str(s) for s in result] if result else []
     return []
 
 
 def _get_languages() -> list:
     if not _model:
         return []
-    fn = getattr(_model.model, "get_supported_languages", None)
+    base = _model.model
+    fn = getattr(base.model, "get_supported_languages", None)
     if callable(fn):
         result = fn()
-        if result:
-            return [str(l) for l in result]
+        return [str(l) for l in result] if result else []
     return []
 
 
-def _to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
-    audio_clipped = np.clip(audio, -1.0, 1.0)
-    audio_int16 = (audio_clipped * 32767).astype(np.int16)
+def _to_pcm16(audio: np.ndarray) -> bytes:
+    return np.clip(audio * 32768, -32768, 32767).astype(np.int16).tobytes()
+
+
+def _wav_header(sample_rate: int, data_len: int = 0xFFFFFFFF) -> bytes:
+    n_channels = 1
+    bits = 16
+    byte_rate = sample_rate * n_channels * bits // 8
+    block_align = n_channels * bits // 8
+    riff_size = 0xFFFFFFFF if data_len == 0xFFFFFFFF else 36 + data_len
     buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(audio_int16.tobytes())
+    buf.write(b"RIFF")
+    buf.write(struct.pack("<I", riff_size))
+    buf.write(b"WAVE")
+    buf.write(b"fmt ")
+    buf.write(struct.pack("<IHHIIHH", 16, 1, n_channels, sample_rate, byte_rate, block_align, bits))
+    buf.write(b"data")
+    buf.write(struct.pack("<I", data_len))
     return buf.getvalue()
+
+
+def _to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
+    raw = _to_pcm16(audio)
+    return _wav_header(sample_rate, len(raw)) + raw
