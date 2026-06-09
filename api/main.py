@@ -32,12 +32,6 @@ async def lifespan(app: FastAPI):
     }
 
     _attn_backend = ATTN_IMPL
-    if _attn_backend == "flash_attention_2":
-        try:
-            import flash_attn  # noqa: F401
-        except ImportError:
-            print("WARNING: flash-attn not available, falling back to sdpa")
-            _attn_backend = "sdpa"
 
     _model = Qwen3TTSModel.from_pretrained(
         MODEL_ID,
