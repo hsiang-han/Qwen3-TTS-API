@@ -2,7 +2,7 @@ FROM pytorch/pytorch:2.9.1-cuda12.8-cudnn9-devel
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        sox libsox-dev ffmpeg curl && \
+        git sox libsox-dev ffmpeg curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
